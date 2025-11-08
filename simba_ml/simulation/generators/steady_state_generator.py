@@ -13,22 +13,53 @@ class SteadyStateGenerator:
     """Defines how to generate signals from a PredictionTask."""
 
     def __init__(self, sm: system_model_interface.SystemModelInterface):
-        """Initializes the `PredictionTaskBuilder`.
+        """Initializes the `SteadyStateGenerator`.
 
         Args:
             sm: A `SystemModel`, for which the signals should be built.
+
+        Raises:
+            ValueError: If the model cannot generate a valid steady state (e.g., ODE solver failure,
+                       all species are boundary conditions, or malformed SBML).
         """
         self.sm = sm
 
-    def _is_similar(self, series1: pd.Series, series2: pd.Series) -> bool:
-        """Checks if two series are similar.
+        # Validate that ODE solver works on this model by attempting one test sample
+        # This catches issues like malformed SBML files, broken derivative functions, etc.
+        try:
+            start_vals = sm.sample_start_values_from_hypercube(1)
+            _ = self.__generate_steady_state(start_vals, 0)
+        except ValueError as e:
+            # Re-raise ValueError (likely "Signal has no steady state")
+            raise ValueError(
+                f"Model '{sm.name}' failed ODE solver validation during initialization. "
+                f"This typically means:\n"
+                f"1. SBML file is malformed (check annotation elements)\n"
+                f"2. All species are marked as boundary conditions (use a different model)\n"
+                f"3. ODE system doesn't reach steady state with current solver settings\n"
+                f"\nOriginal error: {e}"
+            ) from e
+        except Exception as e:
+            # Catch any other unexpected errors
+            raise ValueError(
+                f"Model '{sm.name}' failed initialization validation: {type(e).__name__}: {e}"
+            ) from e
+
+    def _is_similar(self, series1: pd.Series, series2: pd.Series,
+                    abs_tol: float = 1e-8, rel_tol: float = 1e-4) -> bool:
+        """Checks if two series are similar using combined absolute and relative tolerance.
+
+        Uses a robust tolerance check that works for both small values (near zero)
+        and large values: |a - b| <= abs_tol OR |a - b| / max(|a|, |b|) <= rel_tol
 
         Args:
             series1: The first series.
             series2: The second series.
+            abs_tol: Absolute tolerance threshold (default 1e-8, for near-zero values)
+            rel_tol: Relative tolerance threshold (default 1e-4, for proportional differences)
 
         Returns:
-            True if the series are similar, False otherwise.
+            True if all values are similar within tolerance, False otherwise.
 
         Raises:
             ValueError: if the series have different lengths.
@@ -36,10 +67,26 @@ class SteadyStateGenerator:
         if len(series1) != len(series2):
             raise ValueError("Series have different lengths.")
 
-        return all(
-            math.isclose(series1.iloc[i], series2.iloc[i], rel_tol=1e-05)
-            for i in range(len(series1))
-        )
+        for i in range(len(series1)):
+            val1 = series1.iloc[i]
+            val2 = series2.iloc[i]
+
+            # Check absolute tolerance first (good for values near zero)
+            abs_diff = abs(val1 - val2)
+            if abs_diff <= abs_tol:
+                continue
+
+            # Check relative tolerance (good for large values)
+            max_abs = max(abs(val1), abs(val2))
+            if max_abs > 0:
+                rel_diff = abs_diff / max_abs
+                if rel_diff <= rel_tol:
+                    continue
+
+            # Neither tolerance satisfied
+            return False
+
+        return True
 
     def __check_if_signal_has_steady_state(self, signal: pd.DataFrame) -> bool:
         """Checks if a signal has a steady state.
