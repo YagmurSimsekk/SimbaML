@@ -2,7 +2,7 @@ import click
 import json
 import os
 from simba_ml.sbml_parser.main_parser import MainSBMLParser, UnsupportedSBMLVersionError, SBMLParsingError
-from simba_ml.sbml_parser.ml_exporter import SBMLMLExporter
+from simba_ml.sbml_parser.ml_exporter import SBMLExporter
 
 @click.command()
 @click.argument("file", type=click.Path(exists=True))
@@ -20,7 +20,7 @@ def parse_sbml(file, verbose, species_limit, reactions_limit, export, output_dir
         
         # If quiet mode and no export, just export the JSON to stdout and return
         if quiet and not export:
-            exporter = SBMLMLExporter(result)
+            exporter = SBMLExporter(result)
             ml_dataset = exporter.get_ml_dataset()
             click.echo(json.dumps(ml_dataset, indent=2, default=str))
             return
@@ -124,7 +124,7 @@ def parse_sbml(file, verbose, species_limit, reactions_limit, export, output_dir
                 click.echo(click.style("🔬 Exporting data...", fg='cyan', bold=True))
             
             try:
-                exporter = SBMLMLExporter(result)
+                exporter = SBMLExporter(result)
                 exported_files = exporter.export_to_files(output_dir, format=export)
                 
                 if not quiet:

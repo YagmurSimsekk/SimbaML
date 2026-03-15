@@ -1,5 +1,5 @@
 import click
-from simba_ml.sbml_parser.biomodels_api import BioModelsAPI, download_biomodel, search_biomodels
+from simba_ml.sbml_parser.biomodels_api import BioModelsAPI
 
 
 @click.group()
@@ -14,7 +14,8 @@ def biomodels():
 def download(model_id, output_dir):
     """Download an SBML model from BioModels Database."""
     try:
-        file_path = download_biomodel(model_id, output_dir)
+        api = BioModelsAPI()
+        file_path = api.download_model(model_id, output_dir)
         click.echo(click.style(f"✅ Downloaded: {file_path}", fg='green'))
     except Exception as e:
         click.echo(click.style(f"❌ Error: {e}", fg='red'), err=True)
@@ -28,34 +29,30 @@ def download(model_id, output_dir):
 def search(query, limit, detailed):
     """Search for models in BioModels Database."""
     try:
-        models = search_biomodels(query, limit)
-        
+        api = BioModelsAPI()
+        models = api.search_models(query, limit)
+
         if not models:
             click.echo(f"No models found for query: {query}")
             return
-        
+
         click.echo(click.style(f"Found {len(models)} models for '{query}':", fg='cyan', bold=True))
         click.echo()
-        
+
         for i, model in enumerate(models, 1):
-            model_id = model.get('id', 'unknown')
+            model_id = model.get('model_id', 'unknown')
             name = model.get('name', 'No name available')
-            
+
             click.echo(f"{i}. {click.style(model_id, fg='blue', bold=True)}")
             click.echo(f"   {name}")
-            
+
             if detailed:
                 authors = model.get('submitter', 'Unknown authors')
-                publication = model.get('publication', {})
-                pub_year = publication.get('year', 'Unknown year')
-                
+                date = model.get('submission_date', 'Unknown date')
+
                 click.echo(f"   Authors: {authors}")
-                click.echo(f"   Year: {pub_year}")
-                
-                if publication.get('title'):
-                    title = publication['title'][:100] + ('...' if len(publication['title']) > 100 else '')
-                    click.echo(f"   Publication: {title}")
-            
+                click.echo(f"   Submitted: {date}")
+
             click.echo()
             
     except Exception as e:
